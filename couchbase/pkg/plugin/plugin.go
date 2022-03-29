@@ -3,9 +3,10 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"math/rand"
+	"fmt"
 	"time"
 
+	"github.com/couchbase/gocb/v2"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
@@ -13,7 +14,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/live"
 )
 
-// Make sure SampleDatasource implements required interfaces. This is important to do
+// Make sure CouchbaseDatasource implements required interfaces. This is important to do
 // since otherwise we will only get a not implemented error response from plugin in
 // runtime. In this example datasource instance implements backend.QueryDataHandler,
 // backend.CheckHealthHandler, backend.StreamHandler interfaces. Plugin should not
@@ -23,33 +24,68 @@ import (
 // is useful to clean up resources used by previous datasource instance when a new datasource
 // instance created upon datasource settings changed.
 var (
-	_ backend.QueryDataHandler      = (*SampleDatasource)(nil)
-	_ backend.CheckHealthHandler    = (*SampleDatasource)(nil)
-	_ backend.StreamHandler         = (*SampleDatasource)(nil)
-	_ instancemgmt.InstanceDisposer = (*SampleDatasource)(nil)
+	_ backend.QueryDataHandler      = (*CouchbaseDatasource)(nil)
+	_ backend.CheckHealthHandler    = (*CouchbaseDatasource)(nil)
+	_ backend.StreamHandler         = (*CouchbaseDatasource)(nil)
+	_ instancemgmt.InstanceDisposer = (*CouchbaseDatasource)(nil)
 )
 
-// NewSampleDatasource creates a new datasource instance.
-func NewSampleDatasource(_ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-	return &SampleDatasource{}, nil
+// NewCouchbaseDatasource creates a new datasource instance.
+func NewCouchbaseDatasource(instance backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+  var settings map[string]string
+  if e := json.Unmarshal(instance.JSONData, &settings); e != nil {
+    return &backend.CheckHealthResult{
+      Status: backend.HealthStatusError,
+      Message: "failed to parse settings",
+    }, e
+  }
+  password := instance.DecryptedSecureJSONData["password"]
+  if cluster, err := gocb.Connect(
+    settings["host"],
+    gocb.ClusterOptions{
+      Authenticator: gocb.PasswordAuthenticator{
+        Username: settings["username"],
+        Password: password,
+      },
+    },
+  ); err != nil {
+    log.DefaultLogger.Error("Failed to connect to cluster", err)
+    return nil, err
+  } else {
+    log.DefaultLogger.Info("Connected to the cluster, executing a test query...")
+    bucket := cluster.Bucket(settings["bucket"])
+    if be := bucket.WaitUntilReady(5*time.Second, nil); be != nil {
+      log.DefaultLogger.Error("Bucket is not ready", "bucket", settings["bucket"], be.Error())
+      return nil, be
+    }
+
+    return &CouchbaseDatasource{
+      *cluster,
+      *bucket,
+    }, nil
+  }
 }
 
-// SampleDatasource is an example datasource which can respond to data queries, reports
+// CouchbaseDatasource is an example datasource which can respond to data queries, reports
 // its health and has streaming skills.
-type SampleDatasource struct{}
+type CouchbaseDatasource struct{
+  Cluster gocb.Cluster
+  Bucket gocb.Bucket
+}
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
 // created. As soon as datasource settings change detected by SDK old datasource instance will
-// be disposed and a new one will be created using NewSampleDatasource factory function.
-func (d *SampleDatasource) Dispose() {
+// be disposed and a new one will be created using NewCouchbaseDatasource factory function.
+func (d *CouchbaseDatasource) Dispose() {
 	// Clean up datasource instance resources.
+  // nothing to do
 }
 
 // QueryData handles multiple queries and returns multiple responses.
 // req contains the queries []DataQuery (where each query contains RefID as a unique identifier).
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
 // contains Frames ([]*Frame).
-func (d *SampleDatasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+func (d *CouchbaseDatasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
 	log.DefaultLogger.Info("QueryData called", "request", req)
 
 	// create response struct
@@ -71,7 +107,7 @@ type queryModel struct {
 	WithStreaming bool `json:"withStreaming"`
 }
 
-func (d *SampleDatasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
+func (d *CouchbaseDatasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	response := backend.DataResponse{}
 
 	// Unmarshal the JSON into our queryModel.
@@ -113,26 +149,40 @@ func (d *SampleDatasource) query(_ context.Context, pCtx backend.PluginContext, 
 // The main use case for these health checks is the test button on the
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
-func (d *SampleDatasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	log.DefaultLogger.Info("CheckHealth called", "request", req)
+func (d *CouchbaseDatasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+  if pings, be := d.Bucket.Ping(&gocb.PingOptions{
+      ReportID: "grafana-test",
+      ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeKeyValue},
+    }); be != nil {
+      log.DefaultLogger.Error("Failed to ping the cluster", "error", be.Error())
+      return &backend.CheckHealthResult{
+        Status: backend.HealthStatusError,
+        Message: be.Error(),
+      }, be
+    } else {
+     for _, responses := range pings.Services{
+       for _, response := range responses {
+         if response.State != gocb.PingStateOk {
+           return &backend.CheckHealthResult{
+             Status: backend.HealthStatusError,
+             Message: fmt.Sprintf("Node %s at remote %s ping response was not ok: %s", response.ID, response.Remote, response.Error),
+           }, nil
+         }
+       }
+     }
+    }
 
-	var status = backend.HealthStatusOk
-	var message = "Data source is working"
+    log.DefaultLogger.Info("Verified cluster connectivity")
+    return &backend.CheckHealthResult{
+      Status: backend.HealthStatusOk,
+      Message: "Ping OK",
+    }, nil
+  }
 
-	if rand.Int()%2 == 0 {
-		status = backend.HealthStatusError
-		message = "randomized error"
-	}
-
-	return &backend.CheckHealthResult{
-		Status:  status,
-		Message: message,
-	}, nil
-}
 
 // SubscribeStream is called when a client wants to connect to a stream. This callback
 // allows sending the first message.
-func (d *SampleDatasource) SubscribeStream(_ context.Context, req *backend.SubscribeStreamRequest) (*backend.SubscribeStreamResponse, error) {
+func (d *CouchbaseDatasource) SubscribeStream(_ context.Context, req *backend.SubscribeStreamRequest) (*backend.SubscribeStreamResponse, error) {
 	log.DefaultLogger.Info("SubscribeStream called", "request", req)
 
 	status := backend.SubscribeStreamStatusPermissionDenied
@@ -147,7 +197,7 @@ func (d *SampleDatasource) SubscribeStream(_ context.Context, req *backend.Subsc
 
 // RunStream is called once for any open channel.  Results are shared with everyone
 // subscribed to the same channel.
-func (d *SampleDatasource) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
+func (d *CouchbaseDatasource) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
 	log.DefaultLogger.Info("RunStream called", "request", req)
 
 	// Create the same data frame as for query data.
@@ -184,7 +234,7 @@ func (d *SampleDatasource) RunStream(ctx context.Context, req *backend.RunStream
 }
 
 // PublishStream is called when a client sends a message to the stream.
-func (d *SampleDatasource) PublishStream(_ context.Context, req *backend.PublishStreamRequest) (*backend.PublishStreamResponse, error) {
+func (d *CouchbaseDatasource) PublishStream(_ context.Context, req *backend.PublishStreamRequest) (*backend.PublishStreamResponse, error) {
 	log.DefaultLogger.Info("PublishStream called", "request", req)
 
 	// Do not allow publishing at all.

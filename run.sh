@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 ######################################################################
 # @author      : chedim (chedim@couchbaser)
@@ -8,4 +8,12 @@
 # @description : Starts grafana with the plugin
 ######################################################################
 
+pushd couchbase
+set -e 
+trap popd exit
+yarn build || exit 1
+mage -v || exit 1
+popd
+trap '' exit
+docker-compose down
 docker-compose up 

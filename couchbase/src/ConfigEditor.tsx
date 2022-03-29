@@ -10,37 +10,57 @@ interface Props extends DataSourcePluginOptionsEditorProps<MyDataSourceOptions> 
 interface State {}
 
 export class ConfigEditor extends PureComponent<Props, State> {
-  onPathChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { onOptionsChange, options } = this.props;
-    const jsonData = {
-      ...options.jsonData,
-      path: event.target.value,
-    };
-    onOptionsChange({ ...options, jsonData });
-  };
-
-  // Secure field (only sent to the backend)
-  onAPIKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
+  onHostChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onOptionsChange, options } = this.props;
     onOptionsChange({
       ...options,
-      secureJsonData: {
-        apiKey: event.target.value,
+      jsonData: {
+        ...options.jsonData,
+        host: event.target.value,
       },
     });
   };
 
-  onResetAPIKey = () => {
+  onUserChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onOptionsChange, options } = this.props;
     onOptionsChange({
       ...options,
-      secureJsonFields: {
-        ...options.secureJsonFields,
-        apiKey: false,
+      jsonData: {
+        ...options.jsonData,
+        username: event.target.value,
       },
+    });
+  };
+
+  onBucketChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { onOptionsChange, options } = this.props;
+    onOptionsChange({
+      ...options,
+      jsonData: {
+        ...options.jsonData,
+        bucket: event.target.value,
+      },
+    });
+  };
+
+  // Secure field (only sent to the backend)
+  onPasswordChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { onOptionsChange, options } = this.props;
+    onOptionsChange({
+      ...options,
       secureJsonData: {
         ...options.secureJsonData,
-        apiKey: '',
+        password: event.target.value,
+      },
+    });
+  };
+
+  onPasswordReset = () => {
+    const { onOptionsChange, options } = this.props;
+    onOptionsChange({
+      ...options,
+      secureJsonData: {
+        password: false,
       },
     });
   };
@@ -54,28 +74,45 @@ export class ConfigEditor extends PureComponent<Props, State> {
       <div className="gf-form-group">
         <div className="gf-form">
           <FormField
-            label="Path"
-            labelWidth={6}
+            label="Cluster"
+            labelWidth={10}
             inputWidth={20}
-            onChange={this.onPathChange}
-            value={jsonData.path || ''}
-            placeholder="json field returned to frontend"
+            onChange={this.onHostChange}
+            value={jsonData.host || ''}
+            placeholder="Couchbase cluster address"
           />
         </div>
-
-        <div className="gf-form-inline">
-          <div className="gf-form">
-            <SecretFormField
-              isConfigured={(secureJsonFields && secureJsonFields.apiKey) as boolean}
-              value={secureJsonData.apiKey || ''}
-              label="API Key"
-              placeholder="secure json field (backend only)"
-              labelWidth={6}
-              inputWidth={20}
-              onReset={this.onResetAPIKey}
-              onChange={this.onAPIKeyChange}
-            />
-          </div>
+        <div className="gf-form">
+          <FormField
+            label="Username"
+            labelWidth={10}
+            inputWidth={20}
+            onChange={this.onUserChange}
+            value={jsonData.username || ''}
+            placeholder="Couchbase cluster username"
+          />
+        </div>
+        <div className="gf-form">
+          <SecretFormField
+            isConfigured={(secureJsonFields && secureJsonFields.password) as boolean}
+            value={secureJsonData.password || ''}
+            label="Password"
+            placeholder="Couchbase cluster password"
+            labelWidth={10}
+            inputWidth={20}
+            onReset={this.onPasswordReset}
+            onChange={this.onPasswordChange}
+          />
+        </div>
+        <div className="gf-form">
+          <FormField
+            label="Bucket"
+            labelWidth={10}
+            inputWidth={20}
+            onChange={this.onBucketChange}
+            value={jsonData.bucket || ''}
+            placeholder="Couchbase bucket name"
+          />
         </div>
       </div>
     );
