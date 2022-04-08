@@ -5,10 +5,11 @@ services:
     restart: always
     image: grafana/grafana:latest
     environment:
-    - "GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=couchbase-couchbase"
+    - "GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=couchbase"
     - "GF_PLUGIN_APP_TLS_SKIP_VERIFY_INSECURE=true"
     volumes:
-    - .:/var/lib/grafana/plugins
+    - ./couchbase:/var/lib/grafana/plugins/couchbase
+    - ./datasources:/etc/grafana/provisioning/datasources
     ports:
     - "3000:3000"
     expose:

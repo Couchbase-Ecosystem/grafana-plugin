@@ -3,7 +3,9 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -11,7 +13,6 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/grafana/grafana-plugin-sdk-go/live"
 )
 
 // Make sure CouchbaseDatasource implements required interfaces. This is important to do
@@ -93,54 +94,57 @@ func (d *CouchbaseDatasource) QueryData(ctx context.Context, req *backend.QueryD
 
 	// loop over queries and execute them individually.
 	for _, q := range req.Queries {
-		res := d.query(ctx, req.PluginContext, q)
-
-		// save the response in a hashmap
-		// based on with RefID as identifier
-		response.Responses[q.RefID] = res
+    log.DefaultLogger.Info("Processing query", "refId", q.RefID)
+    response.Responses[q.RefID] = d.query(ctx, req.PluginContext, q)
 	}
 
 	return response, nil
 }
 
-type queryModel struct {
-	WithStreaming bool `json:"withStreaming"`
+type QueryRequest struct {
+  Query string `json:"query"`
+  Fts bool `json:"fts"`
 }
 
-func (d *CouchbaseDatasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
+func (d *CouchbaseDatasource) query(_ context.Context, pCtx backend.PluginContext, q backend.DataQuery) backend.DataResponse {
 	response := backend.DataResponse{}
 
-	// Unmarshal the JSON into our queryModel.
-	var qm queryModel
 
-	response.Error = json.Unmarshal(query.JSON, &qm)
-	if response.Error != nil {
-		return response
-	}
+  range_filter := fmt.Sprintf("d.time > %d AND d.time < %d", q.TimeRange.From.UnixMilli(), q.TimeRange.To.UnixMilli())
+  var query_data QueryRequest
+  query_response := &backend.DataResponse{}
+  if err := json.Unmarshal(q.JSON, &query_data); err != nil {
+    log.DefaultLogger.Error("Failed to unmarshal request json", "error", err)
+    query_response.Error = err;
+    query_response.Frames = make(data.Frames, 0)
+  } else {
+    log.DefaultLogger.Info(fmt.Sprintf("Query data: %+v", query_data))
+    query_string := query_data.Query
+    if err := validateQuery(strings.ToLower(query_string)); err != nil {
+      response.Error = err
+      return response
+    }
+    log.DefaultLogger.Info("Unmarshalled json", "query_string", query_string)
+    query_string = "SELECT * FROM (" + query_string + ") AS d WHERE " + range_filter
 
-	// create data frame response.
-	frame := data.NewFrame("response")
+    log.DefaultLogger.Info("Querying couchbase", "query_string", query_string)
+    if res, qerr := d.Cluster.Query(query_string, nil); qerr != nil {
+      log.DefaultLogger.Error(fmt.Sprintf("Query failed: %+v", qerr))
+      query_response.Error = qerr
+      return *query_response
+    } else {
+      frame := data.NewFrame("response")
 
-	// add fields.
-	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, []time.Time{query.TimeRange.From, query.TimeRange.To}),
-		data.NewField("values", nil, []int64{10, 20}),
-	)
-
-	// If query called with streaming on then return a channel
-	// to subscribe on a client-side and consume updates from a plugin.
-	// Feel free to remove this if you don't need streaming for your datasource.
-	if qm.WithStreaming {
-		channel := live.Channel{
-			Scope:     live.ScopeDatasource,
-			Namespace: pCtx.DataSourceInstanceSettings.UID,
-			Path:      "stream",
-		}
-		frame.SetMeta(&data.FrameMeta{Channel: channel.String()})
-	}
-
-	// add the frames to the response.
-	response.Frames = append(response.Frames, frame)
+      var row map[string]interface{}
+      for res.Next() {
+        res.Row(row)
+        for key, val := range row {
+          frame.Fields = append(frame.Fields, data.NewField(key, nil, val))
+        }
+      }
+      response.Frames = append(response.Frames, frame)
+    }
+  }
 
 	return response
 }
@@ -241,4 +245,37 @@ func (d *CouchbaseDatasource) PublishStream(_ context.Context, req *backend.Publ
 	return &backend.PublishStreamResponse{
 		Status: backend.PublishStreamStatusPermissionDenied,
 	}, nil
+}
+
+func locateClause(query string, clause string) int {
+  inString := false
+  escaped := false
+  clen := len(clause)
+
+  for i := 0; i < len(query); i++ {
+    if c := query[i]; c == '"' {
+      if !escaped {
+        inString = !inString
+      }
+    } else if inString {
+      if c == '\\' {
+        escaped = !escaped
+      } else {
+        escaped = false
+      }
+    } else if i > clen && strings.EqualFold(query[i-clen:i], "where") {
+      return i-5
+    }
+  }
+
+  return -1;
+}
+
+func validateQuery(query string) error {
+  if strings.Contains(query, "limit") {
+    return errors.New("Limit clause is not supported")
+  } else if !strings.Contains(query, "time") && !strings.Contains(query, "*") {
+    return errors.New("Please map a timestamp to `time` field")
+  }
+  return nil
 }
