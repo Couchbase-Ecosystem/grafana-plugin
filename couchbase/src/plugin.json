@@ -6,6 +6,7 @@
   "metrics": true,
   "backend": true,
   "executable": "gpx_couchbase",
+  "annotations": true,
   "info": {
     "description": "Couchbase database connector",
     "author": {

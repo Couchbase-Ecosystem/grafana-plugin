@@ -13,7 +13,7 @@ cbq=/opt/couchbase/bin/cbq
 insert_row() {
   row=$(cat <<EOR
 {
-  "time": $(date +%s),
+  "time": CLOCK_UTC(),
   "count": $(( $RANDOM % 100 ))
 }
 EOR

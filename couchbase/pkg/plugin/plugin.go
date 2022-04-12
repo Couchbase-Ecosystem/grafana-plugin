@@ -3,8 +3,8 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -95,7 +95,7 @@ func (d *CouchbaseDatasource) QueryData(ctx context.Context, req *backend.QueryD
 	// loop over queries and execute them individually.
 	for _, q := range req.Queries {
     log.DefaultLogger.Info("Processing query", "refId", q.RefID)
-    response.Responses[q.RefID] = d.query(ctx, req.PluginContext, q)
+    response.Responses[q.RefID] = d.query(q)
 	}
 
 	return response, nil
@@ -106,47 +106,264 @@ type QueryRequest struct {
   Fts bool `json:"fts"`
 }
 
-func (d *CouchbaseDatasource) query(_ context.Context, pCtx backend.PluginContext, q backend.DataQuery) backend.DataResponse {
-	response := backend.DataResponse{}
+func (d *CouchbaseDatasource) query(q backend.DataQuery) backend.DataResponse {
+  defer func() {
+    if err := recover(); err != nil {
+      log.DefaultLogger.Error(fmt.Sprintf("Panic occured: %v", err))
+      debug.PrintStack()
+      panic(err)
+    }
+  }()
 
-
-  range_filter := fmt.Sprintf("d.time > %d AND d.time < %d", q.TimeRange.From.UnixMilli(), q.TimeRange.To.UnixMilli())
+  response := backend.DataResponse {
+    Frames: make(data.Frames, 0),
+  }
+  range_filter := fmt.Sprintf("STR_TO_MILLIS(d.data.time) > STR_TO_MILLIS('%s') AND STR_TO_MILLIS(d.data.time) < STR_TO_MILLIS('%s')", q.TimeRange.From.Format(time.RFC3339), q.TimeRange.To.Format(time.RFC3339))
   var query_data QueryRequest
-  query_response := &backend.DataResponse{}
   if err := json.Unmarshal(q.JSON, &query_data); err != nil {
     log.DefaultLogger.Error("Failed to unmarshal request json", "error", err)
-    query_response.Error = err;
-    query_response.Frames = make(data.Frames, 0)
+    response.Error = err;
+    return response
   } else {
     log.DefaultLogger.Info(fmt.Sprintf("Query data: %+v", query_data))
     query_string := query_data.Query
-    if err := validateQuery(strings.ToLower(query_string)); err != nil {
-      response.Error = err
-      return response
-    }
     log.DefaultLogger.Info("Unmarshalled json", "query_string", query_string)
-    query_string = "SELECT * FROM (" + query_string + ") AS d WHERE " + range_filter
+    query_string = "SELECT d.data FROM (" + query_string + ") AS d WHERE " + range_filter + " ORDER by d.time DESC"
 
     log.DefaultLogger.Info("Querying couchbase", "query_string", query_string)
+
     if res, qerr := d.Cluster.Query(query_string, nil); qerr != nil {
       log.DefaultLogger.Error(fmt.Sprintf("Query failed: %+v", qerr))
-      query_response.Error = qerr
-      return *query_response
+      response.Error = qerr
+      return response
     } else {
-      frame := data.NewFrame("response")
+      log.DefaultLogger.Info("Query ok:", fmt.Sprintf("%+v", res))
 
       var row map[string]interface{}
+      frame := data.NewFrame("response")
+      frame.SetMeta(&data.FrameMeta{
+        ExecutedQueryString: query_string,
+      })
+
+      keys := []string{}
+      var vals [][]interface{}
       for res.Next() {
-        res.Row(row)
-        for key, val := range row {
-          frame.Fields = append(frame.Fields, data.NewField(key, nil, val))
+        res.Row(&row)
+        d := row["data"].(map[string]interface{})
+        log.DefaultLogger.Info(fmt.Sprintf("Row: %+v", row))
+
+        if (len(keys) == 0) {
+          log.DefaultLogger.Info("Generating keys...")
+          for key := range d {
+            keys = append(keys, key)
+            vals = append(vals, nil)
+          }
+          log.DefaultLogger.Info("Generated keys", keys)
         }
+
+        for i, key := range keys {
+          vals[i] = append(vals[i], d[key])
+        }
+
+        log.DefaultLogger.Info("Processed row")
       }
+
+      frame.Fields = make(data.Fields, len(keys))
+      for i, key := range keys {
+        frame.Fields[i] = createField(key, vals[i])
+      }
+
       response.Frames = append(response.Frames, frame)
     }
   }
 
 	return response
+}
+
+func normalizeFieldData(name string, values []interface{}) (string, []interface{}) {
+  result := make([]interface{}, len(values))
+  if (strings.EqualFold(name, "time")) {
+    for i, v := range values {
+      if time, err := time.Parse(time.RFC3339, v.(string)); err == nil {
+        result[i] = time
+      } else {
+        panic(err)
+      }
+    }
+    return "Time", result
+  }
+  return name, values
+}
+
+func createField(name string, values []interface{}) *data.Field {
+  vlen := len(values)
+  if (vlen == 0) {
+    return data.NewField(name, nil, []bool{})
+  }
+
+  name, values = normalizeFieldData(name, values)
+
+  log.DefaultLogger.Debug(fmt.Sprintf("field %s: %d values", name, vlen))
+	switch v := values[0].(type) {
+  case int8:
+    r := make([]int8, vlen);
+    for i, v := range values {
+      r[i] = v.(int8)
+    }
+    return data.NewField(name, nil, r)
+  case *int8:
+    r := make([]*int8, vlen);
+    for i, v := range values {
+      r[i] = v.(*int8)
+    }
+    return data.NewField(name, nil, r)
+  case int16:
+    r := make([]int16, vlen);
+    for i, v := range values {
+      r[i] = v.(int16)
+    }
+    return data.NewField(name, nil, r)
+	case *int16:
+    r := make([]*int16, vlen);
+    for i, v := range values {
+      r[i] = v.(*int16)
+    }
+    return data.NewField(name, nil, r)
+  case int32:
+    r := make([]int32, vlen);
+    for i, v := range values {
+      r[i] = v.(int32)
+    }
+    return data.NewField(name, nil, r)
+	case *int32:
+    r := make([]*int32, vlen);
+    for i, v := range values {
+      r[i] = v.(*int32)
+    }
+    return data.NewField(name, nil, r)
+  case int64:
+    r := make([]int64, vlen);
+    for i, v := range values {
+      r[i] = v.(int64)
+    }
+    return data.NewField(name, nil, r)
+	case *int64:
+    r := make([]*int64, vlen);
+    for i, v := range values {
+      r[i] = v.(*int64)
+    }
+    return data.NewField(name, nil, r)
+  case uint8:
+    r := make([]uint8, vlen);
+    for i, v := range values {
+      r[i] = v.(uint8)
+    }
+    return data.NewField(name, nil, r)
+	case *uint8:
+    r := make([]*uint8, vlen);
+    for i, v := range values {
+      r[i] = v.(*uint8)
+    }
+    return data.NewField(name, nil, r)
+	case uint16:
+    r := make([]uint16, vlen);
+    for i, v := range values {
+      r[i] = v.(uint16)
+    }
+    return data.NewField(name, nil, r)
+	case *uint16:
+    r := make([]*uint16, vlen);
+    for i, v := range values {
+      r[i] = v.(*uint16)
+    }
+    return data.NewField(name, nil, r)
+	case uint32:
+    r := make([]uint32, vlen);
+    for i, v := range values {
+      r[i] = v.(uint32)
+    }
+    return data.NewField(name, nil, r)
+	case *uint32:
+    r := make([]*uint32, vlen);
+    for i, v := range values {
+      r[i] = v.(*uint32)
+    }
+    return data.NewField(name, nil, r)
+	case uint64:
+    r := make([]uint64, vlen);
+    for i, v := range values {
+      r[i] = v.(uint64)
+    }
+    return data.NewField(name, nil, r)
+	case *uint64:
+    r := make([]*uint64, vlen);
+    for i, v := range values {
+      r[i] = v.(*uint64)
+    }
+    return data.NewField(name, nil, r)
+	case float32:
+    r := make([]float32, vlen);
+    for i, v := range values {
+      r[i] = v.(float32)
+    }
+    return data.NewField(name, nil, r)
+	case *float32:
+    r := make([]*float32, vlen);
+    for i, v := range values {
+      r[i] = v.(*float32)
+    }
+    return data.NewField(name, nil, r)
+	case float64:
+    r := make([]float64, vlen);
+    for i, v := range values {
+      r[i] = v.(float64)
+    }
+    return data.NewField(name, nil, r)
+	case *float64:
+    r := make([]*float64, vlen);
+    for i, v := range values {
+      r[i] = v.(*float64)
+    }
+    return data.NewField(name, nil, r)
+	case string:
+    r := make([]string, vlen);
+    for i, v := range values {
+      r[i] = v.(string)
+    }
+    return data.NewField(name, nil, r)
+	case *string:
+    r := make([]*string, vlen);
+    for i, v := range values {
+      r[i] = v.(*string)
+    }
+    return data.NewField(name, nil, r)
+	case bool:
+    r := make([]bool, vlen);
+    for i, v := range values {
+      r[i] = v.(bool)
+    }
+    return data.NewField(name, nil, r)
+	case *bool:
+    r := make([]*bool, vlen);
+    for i, v := range values {
+      r[i] = v.(*bool)
+    }
+    return data.NewField(name, nil, r)
+	case time.Time:
+    r := make([]time.Time, vlen);
+    for i, v := range values {
+      r[i] = v.(time.Time)
+    }
+    return data.NewField(name, nil, r)
+	case *time.Time:
+    r := make([]*time.Time, vlen);
+    for i, v := range values {
+      r[i] = v.(*time.Time)
+    }
+    return data.NewField(name, nil, r)
+  default:
+		panic(fmt.Errorf("unsupported type %T", v))
+	}
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
@@ -245,37 +462,4 @@ func (d *CouchbaseDatasource) PublishStream(_ context.Context, req *backend.Publ
 	return &backend.PublishStreamResponse{
 		Status: backend.PublishStreamStatusPermissionDenied,
 	}, nil
-}
-
-func locateClause(query string, clause string) int {
-  inString := false
-  escaped := false
-  clen := len(clause)
-
-  for i := 0; i < len(query); i++ {
-    if c := query[i]; c == '"' {
-      if !escaped {
-        inString = !inString
-      }
-    } else if inString {
-      if c == '\\' {
-        escaped = !escaped
-      } else {
-        escaped = false
-      }
-    } else if i > clen && strings.EqualFold(query[i-clen:i], "where") {
-      return i-5
-    }
-  }
-
-  return -1;
-}
-
-func validateQuery(query string) error {
-  if strings.Contains(query, "limit") {
-    return errors.New("Limit clause is not supported")
-  } else if !strings.Contains(query, "time") && !strings.Contains(query, "*") {
-    return errors.New("Please map a timestamp to `time` field")
-  }
-  return nil
 }
