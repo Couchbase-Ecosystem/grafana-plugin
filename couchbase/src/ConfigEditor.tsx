@@ -32,17 +32,6 @@ export class ConfigEditor extends PureComponent<Props, State> {
     });
   };
 
-  onBucketChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { onOptionsChange, options } = this.props;
-    onOptionsChange({
-      ...options,
-      jsonData: {
-        ...options.jsonData,
-        bucket: event.target.value,
-      },
-    });
-  };
-
   // Secure field (only sent to the backend)
   onPasswordChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onOptionsChange, options } = this.props;
@@ -102,16 +91,6 @@ export class ConfigEditor extends PureComponent<Props, State> {
             inputWidth={20}
             onReset={this.onPasswordReset}
             onChange={this.onPasswordChange}
-          />
-        </div>
-        <div className="gf-form">
-          <FormField
-            label="Bucket"
-            labelWidth={10}
-            inputWidth={20}
-            onChange={this.onBucketChange}
-            value={jsonData.bucket || ''}
-            placeholder="Couchbase bucket name"
           />
         </div>
       </div>

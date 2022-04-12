@@ -15,7 +15,6 @@ datasources:
   jsonData:
     host: <...>
     username: <...>
-    bucket: <...>
   secureJsonData:
     password: <...>
 ```
@@ -30,3 +29,7 @@ Use `./run.sh` to start grafana in docker container with following mounts:
 Open grafana at http://localhost:3000, use `admin` as both login and password. 
 You don't need to setup a new password after you login despite grafana asking you to do that -- just reload the page.
 
+## Query requirements
+This datasource supports only SQL++ queries that:
+- return results in an object named `data`: `select * from travel-sample.airplanes as data`
+- return ISO-8601 date in `data.time` field

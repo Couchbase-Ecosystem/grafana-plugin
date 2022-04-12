@@ -53,16 +53,8 @@ func NewCouchbaseDatasource(instance backend.DataSourceInstanceSettings) (instan
     log.DefaultLogger.Error("Failed to connect to cluster", err)
     return nil, err
   } else {
-    log.DefaultLogger.Info("Connected to the cluster, executing a test query...")
-    bucket := cluster.Bucket(settings["bucket"])
-    if be := bucket.WaitUntilReady(5*time.Second, nil); be != nil {
-      log.DefaultLogger.Error("Bucket is not ready", "bucket", settings["bucket"], be.Error())
-      return nil, be
-    }
-
     return &CouchbaseDatasource{
       *cluster,
-      *bucket,
     }, nil
   }
 }
@@ -71,7 +63,6 @@ func NewCouchbaseDatasource(instance backend.DataSourceInstanceSettings) (instan
 // its health and has streaming skills.
 type CouchbaseDatasource struct{
   Cluster gocb.Cluster
-  Bucket gocb.Bucket
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -128,7 +119,7 @@ func (d *CouchbaseDatasource) query(q backend.DataQuery) backend.DataResponse {
     log.DefaultLogger.Info(fmt.Sprintf("Query data: %+v", query_data))
     query_string := query_data.Query
     log.DefaultLogger.Info("Unmarshalled json", "query_string", query_string)
-    query_string = "SELECT d.data FROM (" + query_string + ") AS d WHERE " + range_filter + " ORDER by d.time DESC"
+    query_string = "SELECT d.data FROM (" + query_string + ") AS d WHERE " + range_filter + " ORDER by str_to_millis(d.data.time) ASC"
 
     log.DefaultLogger.Info("Querying couchbase", "query_string", query_string)
 
@@ -150,22 +141,18 @@ func (d *CouchbaseDatasource) query(q backend.DataQuery) backend.DataResponse {
       for res.Next() {
         res.Row(&row)
         d := row["data"].(map[string]interface{})
-        log.DefaultLogger.Info(fmt.Sprintf("Row: %+v", row))
 
         if (len(keys) == 0) {
-          log.DefaultLogger.Info("Generating keys...")
           for key := range d {
             keys = append(keys, key)
             vals = append(vals, nil)
           }
-          log.DefaultLogger.Info("Generated keys", keys)
         }
 
         for i, key := range keys {
           vals[i] = append(vals[i], d[key])
         }
 
-        log.DefaultLogger.Info("Processed row")
       }
 
       frame.Fields = make(data.Fields, len(keys))
@@ -371,9 +358,9 @@ func createField(name string, values []interface{}) *data.Field {
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
 func (d *CouchbaseDatasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-  if pings, be := d.Bucket.Ping(&gocb.PingOptions{
+  if pings, be := d.Cluster.Ping(&gocb.PingOptions{
       ReportID: "grafana-test",
-      ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeKeyValue},
+      ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeQuery},
     }); be != nil {
       log.DefaultLogger.Error("Failed to ping the cluster", "error", be.Error())
       return &backend.CheckHealthResult{
