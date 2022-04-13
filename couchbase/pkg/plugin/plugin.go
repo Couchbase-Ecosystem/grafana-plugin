@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -118,6 +119,10 @@ func (d *CouchbaseDatasource) query(q backend.DataQuery) backend.DataResponse {
   } else {
     log.DefaultLogger.Info(fmt.Sprintf("Query data: %+v", query_data))
     query_string := query_data.Query
+    if matched, _ := regexp.MatchString("(?i)^select\\s+\\*", query_string); !matched {
+      query_string = "SELECT * FROM (" + query_string + ") as data"
+    }
+
     log.DefaultLogger.Info("Unmarshalled json", "query_string", query_string)
     query_string = "SELECT d.data FROM (" + query_string + ") AS d WHERE " + range_filter + " ORDER by str_to_millis(d.data.time) ASC"
 
