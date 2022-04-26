@@ -1,11 +1,11 @@
 import { DataQuery, DataSourceJsonData } from '@grafana/data';
 
-export interface MyQuery extends DataQuery {
+export interface CouchbaseQuery extends DataQuery {
   query: string;
   analytics: boolean;
 }
 
-export const defaultQuery: Partial<MyQuery> = {
+export const defaultQuery: Partial<CouchbaseQuery> = {
   query: '',
   analytics: false,
 };
@@ -20,7 +20,7 @@ export interface SqlExpression {}
 /**
  * These are options configured for each DataSource instance.
  */
-export interface MyDataSourceOptions extends DataSourceJsonData {
+export interface CouchbaseOptions extends DataSourceJsonData {
   host?: string;
   username?: string;
   bucket?: string;
@@ -29,6 +29,6 @@ export interface MyDataSourceOptions extends DataSourceJsonData {
 /**
  * Value that is used in the backend, but never sent over HTTP to the frontend
  */
-export interface MySecureJsonData {
+export interface CouchbaseSecureData {
   password?: string;
 }

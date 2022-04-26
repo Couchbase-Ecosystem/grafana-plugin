@@ -1,10 +1,10 @@
 import { DataSourceInstanceSettings } from '@grafana/data';
 import { DataSourceWithBackend } from '@grafana/runtime';
-import { MyDataSourceOptions, MyQuery } from './types';
+import { CouchbaseOptions, CouchbaseQuery } from './types';
 
-export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
+export class Couchbase extends DataSourceWithBackend<CouchbaseQuery, CouchbaseOptions> {
   annotations = {};
-  constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
+  constructor(instanceSettings: DataSourceInstanceSettings<CouchbaseOptions>) {
     super(instanceSettings);
   }
 }

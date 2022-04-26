@@ -1,11 +1,11 @@
 import React, { PureComponent, FormEvent } from 'react';
 import { FieldSet, InlineFieldRow, QueryField, InlineSwitch } from '@grafana/ui';
 import { QueryEditorProps } from '@grafana/data';
-import { DataSource } from './datasource';
-import { MyDataSourceOptions, MyQuery, defaultQuery } from './types';
+import { Couchbase } from './datasource';
+import { CouchbaseOptions, CouchbaseQuery, defaultQuery } from './types';
 import { defaults } from 'lodash';
 
-type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
+type Props = QueryEditorProps<Couchbase, CouchbaseQuery, CouchbaseOptions>;
 
 export class QueryEditor extends PureComponent<Props> {
   onQueryChange = (value: string) => {
@@ -18,7 +18,7 @@ export class QueryEditor extends PureComponent<Props> {
   onAnalyticsChange = (e: FormEvent<HTMLInputElement>) => {
     this.props.onChange({
       ...this.props.query,
-      analytics: !this.props.query.analytics,
+      analytics: e.currentTarget.checked,
     });
   };
 
@@ -34,7 +34,8 @@ export class QueryEditor extends PureComponent<Props> {
           <InlineSwitch
             label="Run using analytics service"
             showLabel={true}
-            checked={query.analytics || false}
+            defaultChecked={query.analytics}
+            value={query.analytics}
             onChange={this.onAnalyticsChange}
           />
         </div>
