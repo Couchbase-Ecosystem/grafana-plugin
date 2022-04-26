@@ -4,6 +4,7 @@ services:
     container_name: grafana
     restart: always
     image: grafana/grafana:latest
+    network_mode: bridge
     environment:
     - "GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=couchbase"
     - "GF_PLUGIN_APP_TLS_SKIP_VERIFY_INSECURE=true"

@@ -2,8 +2,13 @@ import { DataQuery, DataSourceJsonData } from '@grafana/data';
 
 export interface MyQuery extends DataQuery {
   query: string;
-  fts: boolean;
+  analytics: boolean;
 }
+
+export const defaultQuery: Partial<MyQuery> = {
+  query: '',
+  analytics: false,
+};
 
 export interface SelectField {
   label?: string;

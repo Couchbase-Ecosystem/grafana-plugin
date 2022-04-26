@@ -95,7 +95,12 @@ func (d *CouchbaseDatasource) QueryData(ctx context.Context, req *backend.QueryD
 
 type QueryRequest struct {
   Query string `json:"query"`
-  Fts bool `json:"fts"`
+  Analytics bool `json:"analytics"`
+}
+
+type cbResult interface {
+  Next() bool
+  Row(valuePtr interface{}) error
 }
 
 func (d *CouchbaseDatasource) query(q backend.DataQuery) backend.DataResponse {
@@ -127,13 +132,19 @@ func (d *CouchbaseDatasource) query(q backend.DataQuery) backend.DataResponse {
     query_string = "SELECT d.data FROM (" + query_string + ") AS d WHERE " + range_filter + " ORDER by str_to_millis(d.data.time) ASC"
 
     log.DefaultLogger.Info("Querying couchbase", "query_string", query_string)
-
-    if res, qerr := d.Cluster.Query(query_string, nil); qerr != nil {
-      log.DefaultLogger.Error(fmt.Sprintf("Query failed: %+v", qerr))
-      response.Error = qerr
-      return response
+    var res cbResult
+    var e error
+    if (query_data.Analytics) {
+      res, e = d.Cluster.AnalyticsQuery(query_string, nil)
     } else {
-      log.DefaultLogger.Info("Query ok:", fmt.Sprintf("%+v", res))
+      res, e = d.Cluster.Query(query_string, nil)
+    }
+
+    if e != nil {
+      log.DefaultLogger.Error(fmt.Sprintf("Query failed: %+v", e))
+      response.Error = e
+    } else {
+      log.DefaultLogger.Info("Query ok")
 
       var row map[string]interface{}
       frame := data.NewFrame("response")
@@ -171,6 +182,7 @@ func (d *CouchbaseDatasource) query(q backend.DataQuery) backend.DataResponse {
 
 	return response
 }
+
 
 func normalizeFieldData(name string, values []interface{}) (string, []interface{}) {
   result := make([]interface{}, len(values))
