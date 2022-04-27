@@ -2,7 +2,9 @@ package plugin
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"runtime/debug"
@@ -32,6 +34,8 @@ var (
 	_ instancemgmt.InstanceDisposer = (*CouchbaseDatasource)(nil)
 )
 
+var channels = make(map[string]*QueryRequest)
+
 // NewCouchbaseDatasource creates a new datasource instance.
 func NewCouchbaseDatasource(instance backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
   var settings map[string]string
@@ -56,6 +60,7 @@ func NewCouchbaseDatasource(instance backend.DataSourceInstanceSettings) (instan
   } else {
     return &CouchbaseDatasource{
       *cluster,
+      instance,
     }, nil
   }
 }
@@ -64,6 +69,7 @@ func NewCouchbaseDatasource(instance backend.DataSourceInstanceSettings) (instan
 // its health and has streaming skills.
 type CouchbaseDatasource struct{
   Cluster gocb.Cluster
+  Instance backend.DataSourceInstanceSettings
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -79,15 +85,28 @@ func (d *CouchbaseDatasource) Dispose() {
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
 // contains Frames ([]*Frame).
 func (d *CouchbaseDatasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
-	log.DefaultLogger.Info("QueryData called", "request", req)
-
+  defer func() {
+    if err := recover(); err != nil {
+      log.DefaultLogger.Error(fmt.Sprintf("Panic occured: %v", err))
+      debug.PrintStack()
+      panic(err)
+    }
+  }()
+  log.DefaultLogger.Info("QueryData called", "request", fmt.Sprintf("%+v", req))
 	// create response struct
 	response := backend.NewQueryDataResponse()
 
 	// loop over queries and execute them individually.
 	for _, q := range req.Queries {
-    log.DefaultLogger.Info("Processing query", "refId", q.RefID)
-    response.Responses[q.RefID] = d.query(q)
+    log.DefaultLogger.Info("Processing query", "refId", q.RefID, "TYPE: " + q.QueryType)
+    h := sha1.New()
+    h.Write([]byte(q.JSON))
+    query := parseQuery(q.JSON)
+    query.Range = q.TimeRange
+    //channel := "ds/" + d.Instance.UID + "/" + query.Key
+    //channels[channel] = &query
+    // channels are unstable
+    response.Responses[q.RefID] = d.query(nil, &query)
 	}
 
 	return response, nil
@@ -96,6 +115,8 @@ func (d *CouchbaseDatasource) QueryData(ctx context.Context, req *backend.QueryD
 type QueryRequest struct {
   Query string `json:"query"`
   Analytics bool `json:"analytics"`
+  Key string `json:"key"`
+  Range backend.TimeRange
 }
 
 type cbResult interface {
@@ -103,81 +124,124 @@ type cbResult interface {
   Row(valuePtr interface{}) error
 }
 
-func (d *CouchbaseDatasource) query(q backend.DataQuery) backend.DataResponse {
-  defer func() {
-    if err := recover(); err != nil {
-      log.DefaultLogger.Error(fmt.Sprintf("Panic occured: %v", err))
-      debug.PrintStack()
-      panic(err)
-    }
-  }()
+func parseQuery(raw []byte) QueryRequest {
+  var query_data QueryRequest
+  if err := json.Unmarshal(raw, &query_data); err != nil {
+    log.DefaultLogger.Error("Failed to unmarshal request json", string(raw), "error", err)
+    panic(err)
+  } else {
+    return query_data
+  }
+}
+
+func parseJson(raw []byte) map[string]interface{} {
+  var result map[string]interface{}
+  if err := json.Unmarshal(raw, &result); err != nil {
+    log.DefaultLogger.Error("Failed to unmarshal json", string(raw), "error", err)
+    panic(err)
+  } else {
+    return result
+  }
+}
+
+func (d *CouchbaseDatasource) query(channel *string, query_data *QueryRequest) backend.DataResponse {
 
   response := backend.DataResponse {
     Frames: make(data.Frames, 0),
   }
-  range_filter := fmt.Sprintf("STR_TO_MILLIS(d.data.time) > STR_TO_MILLIS('%s') AND STR_TO_MILLIS(d.data.time) < STR_TO_MILLIS('%s')", q.TimeRange.From.Format(time.RFC3339), q.TimeRange.To.Format(time.RFC3339))
-  var query_data QueryRequest
-  if err := json.Unmarshal(q.JSON, &query_data); err != nil {
-    log.DefaultLogger.Error("Failed to unmarshal request json", "error", err)
-    response.Error = err;
-    return response
+
+  query_string := query_data.Query
+  tr := query_data.Range
+  var timeField *string
+
+  log.DefaultLogger.Info("Transforming query")
+  if strTimeRg, e := regexp.Compile("(?i)str_time_range\\s*\\((?P<field>[^\\)]+)\\)"); e != nil {
+    panic(e)
   } else {
-    log.DefaultLogger.Info(fmt.Sprintf("Query data: %+v", query_data))
-    query_string := query_data.Query
-    if matched, _ := regexp.MatchString("(?i)^select\\s+\\*", query_string); !matched {
-      query_string = "SELECT * FROM (" + query_string + ") as data"
+    for _, match := range strTimeRg.FindAllStringSubmatch(query_string, -1) {
+      if timeField != nil {
+        response.Error = errors.New("Only one call to STR_TIME_RANGE per query is supported")
+        return response
+      }
+      timeField = &match[strTimeRg.SubexpIndex("field")]
+      query_string = strTimeRg.ReplaceAllString(query_string, fmt.Sprintf("STR_TO_MILLIS($1) > STR_TO_MILLIS('%s') AND STR_TO_MILLIS($1) <= STR_TO_MILLIS('%s')", tr.From.Format(time.RFC3339), tr.To.Format(time.RFC3339)))
+      query_string = "SELECT * FROM (" + query_string + ") AS data ORDER by str_to_millis(data." + *timeField + ") ASC"
     }
+  }
 
-    log.DefaultLogger.Info("Unmarshalled json", "query_string", query_string)
-    query_string = "SELECT d.data FROM (" + query_string + ") AS d WHERE " + range_filter + " ORDER by str_to_millis(d.data.time) ASC"
-
-    log.DefaultLogger.Info("Querying couchbase", "query_string", query_string)
-    var res cbResult
-    var e error
-    if (query_data.Analytics) {
-      res, e = d.Cluster.AnalyticsQuery(query_string, nil)
-    } else {
-      res, e = d.Cluster.Query(query_string, nil)
+  if timeRg, e := regexp.Compile("(?i)time_range\\s*\\((?P<field>[^\\)]+)\\)"); e != nil {
+    panic(e)
+  } else {
+    for _, match := range timeRg.FindAllStringSubmatch(query_string, -1) {
+      if timeField != nil {
+        response.Error = errors.New("Only one call to TIME_RANGE per query is supported")
+        return response
+      }
+      timeField = &match[timeRg.SubexpIndex("field")]
+      query_string = timeRg.ReplaceAllString(query_string, fmt.Sprintf("$1 > STR_TO_MILLIS('%s') AND $1 <= STR_TO_MILLIS('%s')", tr.From.Format(time.RFC3339), tr.To.Format(time.RFC3339)))
+      query_string = "SELECT * FROM (" + query_string + ") AS data ORDER by data." + *timeField + " ASC"
     }
+  }
 
-    if e != nil {
-      log.DefaultLogger.Error(fmt.Sprintf("Query failed: %+v", e))
-      response.Error = e
-    } else {
-      log.DefaultLogger.Info("Query ok")
+  log.DefaultLogger.Info("Unmarshalled json", "query_string", query_string)
 
-      var row map[string]interface{}
-      frame := data.NewFrame("response")
-      frame.SetMeta(&data.FrameMeta{
-        ExecutedQueryString: query_string,
-      })
+  log.DefaultLogger.Info("Querying couchbase", "query_string", query_string)
+  var res cbResult
+  var e error
+  if (query_data.Analytics) {
+    res, e = d.Cluster.AnalyticsQuery(query_string, nil)
+  } else {
+    res, e = d.Cluster.Query(query_string, nil)
+  }
 
-      keys := []string{}
-      var vals [][]interface{}
-      for res.Next() {
-        res.Row(&row)
-        d := row["data"].(map[string]interface{})
+  if e != nil {
+    log.DefaultLogger.Error(fmt.Sprintf("Query failed: %+v", e))
+    response.Error = e
+  } else {
+    log.DefaultLogger.Info("Query ok")
 
-        if (len(keys) == 0) {
-          for key := range d {
-            keys = append(keys, key)
-            vals = append(vals, nil)
+    var row map[string]interface{}
+    frame := data.NewFrame("response")
+    frame.SetMeta(&data.FrameMeta{
+      ExecutedQueryString: query_string,
+    })
+
+    query_data.Range.To = query_data.Range.From // for streaming queries -- will force time period to be re-queried if no data fetched
+    keys := []string{}
+    var vals [][]interface{}
+    for res.Next() {
+      res.Row(&row)
+      d := row["data"].(map[string]interface{})
+
+      if (len(keys) == 0) {
+        for key := range d {
+          keys = append(keys, key)
+          vals = append(vals, nil)
+        }
+      }
+
+      for i, key := range keys {
+        val := d[key]
+        vals[i] = append(vals[i], val)
+        if key == *timeField {
+          if to, e := time.Parse(time.RFC3339, val.(string)); e == nil {
+            query_data.Range.To = to
           }
         }
-
-        for i, key := range keys {
-          vals[i] = append(vals[i], d[key])
-        }
-
       }
 
-      frame.Fields = make(data.Fields, len(keys))
-      for i, key := range keys {
-        frame.Fields[i] = createField(key, vals[i])
-      }
-
-      response.Frames = append(response.Frames, frame)
     }
+
+    frame.Fields = make(data.Fields, len(keys))
+    for i, key := range keys {
+      frame.Fields[i] = createField(key, vals[i])
+    }
+
+    if channel != nil {
+      frame.Meta.Channel = *channel
+    }
+
+    response.Frames = append(response.Frames, frame)
   }
 
 	return response
@@ -407,14 +471,11 @@ func (d *CouchbaseDatasource) CheckHealth(_ context.Context, req *backend.CheckH
 
 // SubscribeStream is called when a client wants to connect to a stream. This callback
 // allows sending the first message.
-func (d *CouchbaseDatasource) SubscribeStream(_ context.Context, req *backend.SubscribeStreamRequest) (*backend.SubscribeStreamResponse, error) {
+func (d *CouchbaseDatasource) SubscribeStream(c context.Context, req *backend.SubscribeStreamRequest) (*backend.SubscribeStreamResponse, error) {
 	log.DefaultLogger.Info("SubscribeStream called", "request", req)
 
-	status := backend.SubscribeStreamStatusPermissionDenied
-	if req.Path == "stream" {
-		// Allow subscribing only on expected path.
-		status = backend.SubscribeStreamStatusOK
-	}
+  status := backend.SubscribeStreamStatusOK
+
 	return &backend.SubscribeStreamResponse{
 		Status: status,
 	}, nil
@@ -423,39 +484,45 @@ func (d *CouchbaseDatasource) SubscribeStream(_ context.Context, req *backend.Su
 // RunStream is called once for any open channel.  Results are shared with everyone
 // subscribed to the same channel.
 func (d *CouchbaseDatasource) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
+  defer func() {
+    if err := recover(); err != nil {
+      log.DefaultLogger.Error(fmt.Sprintf("Panic occured: %v", err))
+      debug.PrintStack()
+      panic(err)
+    }
+  }()
 	log.DefaultLogger.Info("RunStream called", "request", req)
 
-	// Create the same data frame as for query data.
-	frame := data.NewFrame("response")
+  channel := "ds/" + d.Instance.UID + "/" + req.Path
+  if query_data, present := channels[channel]; !present {
+    log.DefaultLogger.Error("Failed to restore stream query")
+    panic(errors.New("Failed to restore query data for channel " + channel))
+  } else {
+    log.DefaultLogger.Info("restored query data", query_data, "for channel", channel)
 
-	// Add fields (matching the same schema used in QueryData).
-	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, make([]time.Time, 1)),
-		data.NewField("values", nil, make([]int64, 1)),
-	)
+    for {
+      // Stream data frames periodically till stream closed by Grafana.  for {
+      select {
+      case <-ctx.Done():
+        log.DefaultLogger.Info("Context done, finish streaming", "path", req.Path)
+        delete(channels, channel)
+        return nil
+      case <-time.After(time.Second):
 
-	counter := 0
+        // Send new data periodically.
+        query_data.Range.From = query_data.Range.To
+        query_data.Range.To = time.Now()
 
-	// Stream data frames periodically till stream closed by Grafana.
-	for {
-		select {
-		case <-ctx.Done():
-			log.DefaultLogger.Info("Context done, finish streaming", "path", req.Path)
-			return nil
-		case <-time.After(time.Second):
-			// Send new data periodically.
-			frame.Fields[0].Set(0, time.Now())
-			frame.Fields[1].Set(0, int64(10*(counter%2+1)))
+        resp := d.query(&channel, query_data)
 
-			counter++
-
-			err := sender.SendFrame(frame, data.IncludeAll)
-			if err != nil {
-				log.DefaultLogger.Error("Error sending frame", "error", err)
-				continue
-			}
-		}
-	}
+        err := sender.SendFrame(resp.Frames[0], data.IncludeAll)
+        if err != nil {
+          log.DefaultLogger.Error("Error sending frame", "error", err)
+          continue
+        }
+      }
+    }
+  }
 }
 
 // PublishStream is called when a client sends a message to the stream.
