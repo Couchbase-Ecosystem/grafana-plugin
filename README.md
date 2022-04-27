@@ -1,4 +1,4 @@
-# Grafana Couchbase datasource plugin
+# Couchbase datasource plugin for Grafana
 
 !["Couchbase-powered dashboard"](res/dashboards.png "Example dashboard")
 
