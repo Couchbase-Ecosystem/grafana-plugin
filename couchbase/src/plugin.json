@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/master/docs/sources/developers/plugins/plugin.schema.json",
   "type": "datasource",
   "name": "Couchbase",
-  "id": "couchbase",
+  "id": "couchbase-datasource",
   "metrics": true,
   "backend": true,
   "executable": "gpx_couchbase",
@@ -36,7 +36,12 @@
         "url": "https://github.com/couchbaselabs/grafana-plugin/blob/master/LICENSE"
       }
     ],
-    "screenshots": [],
+    "screenshots": [
+      {
+        "name": "Configuration",
+        "path": "img/screenshot.png"
+      }
+    ],
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },
