@@ -8,7 +8,7 @@
 # @description : Starts grafana with the plugin
 ######################################################################
 
-pushd couchbase
+pushd couchbase-datasource
 set -e 
 trap popd exit
 yarn build || exit 1

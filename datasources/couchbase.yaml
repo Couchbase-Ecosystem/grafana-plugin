@@ -1,0 +1,11 @@
+apiVersion: 1
+datasources:
+- name: Couchbase
+  type: couchbase-datasource
+  access: proxy
+  jsonData:
+    host: couchbases://cb.cim7yrrdclzj-3wn.cloud.couchbase.com
+    username: test
+    bucket: test
+  secureJsonData:
+    password: Test123$
