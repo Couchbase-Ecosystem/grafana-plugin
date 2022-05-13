@@ -5,9 +5,9 @@
 This is a simple Grafana datasource plugin that allows querying time series and log data from Couchbase Clusters, inclding Capella clusters.
 
 ## Installation from sources
-* Clone this repository and copy `couchbase` directory into your Grafana `plugins` directory.
+* Clone this repository and copy `couchbase-datasource` directory into your Grafana `plugins` directory.
 * Set the following environment variables (or edit grafana configuration file according to documentation):
-    - "GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=couchbase"
+    - "GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=couchbase-datasource"
     - "GF_PLUGIN_APP_TLS_SKIP_VERIFY_INSECURE=true"
 * Restart grafana
 * Add a new datasource in configuration and configure it with your cluster information.
