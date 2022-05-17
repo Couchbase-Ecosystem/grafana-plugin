@@ -7,7 +7,6 @@ services:
     network_mode: bridge
     environment:
     - "GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=couchbase-datasource"
-    - "GF_PLUGIN_APP_TLS_SKIP_VERIFY_INSECURE=true"
     volumes:
     - ./couchbase-datasource:/var/lib/grafana/plugins/couchbase-datasource
     - ./datasources:/etc/grafana/provisioning/datasources
