@@ -2,7 +2,7 @@
 
 !["Couchbase-powered dashboard"](res/dashboards.png "Example dashboard")
 
-This is a simple Grafana datasource plugin that allows querying time series and log data from Couchbase Clusters, inclding Capella clusters.
+This is a simple community-supported Grafana datasource plugin that allows querying time series and log data from Couchbase Clusters, inclding Capella clusters.
 
 ## Installation from sources
 * Clone this repository and copy `couchbase-datasource` directory into your Grafana `plugins` directory.
