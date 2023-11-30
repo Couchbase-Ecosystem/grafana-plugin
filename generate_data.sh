@@ -11,6 +11,7 @@
 cbq=/opt/couchbase/bin/cbq
 
 phrases=("a dime a dozen" "poke fun at" "curiosity killed the cat" "elvis has left the building" "jaws of life" "head over heels" "you can't judge a book by its cover")
+locations=("KBHM" "PANC" "KPHX" "KLIT" "KLAX" "KDEN" "KMCO" "KIAD")
 
 insert_row() {
   row=$(cat <<EOR
@@ -18,7 +19,8 @@ insert_row() {
   "time": CLOCK_UTC(),
   "count": $(( $RANDOM % 100 )),
   "content": "${phrases[$((RANDOM % 7))]}",
-  "type": "test"
+  "type": "test",
+  "location": "${locations[$((RANDOM % 8))]}"
 }
 EOR
 )
