@@ -11,6 +11,8 @@
 pushd couchbase-datasource
 set -e 
 trap popd exit
+yarn upgrade || exit 1
+yarn install || exit 1
 yarn build || exit 1
 mage -v || exit 1
 popd

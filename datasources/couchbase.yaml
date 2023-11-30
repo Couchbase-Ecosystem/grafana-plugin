@@ -1,10 +1,10 @@
 apiVersion: 1
 datasources:
-- name: Couchbase
+- name: Example Capella Database
   type: couchbase-datasource
   access: proxy
   jsonData:
-    host: couchbases://cb.cim7yrrdclzj-3wn.cloud.couchbase.com
+    host: couchbases://cb.cidkgjhm7yrrdclzj-3wn.cloud.couchbase.com
     username: test
     bucket: test
   secureJsonData:
