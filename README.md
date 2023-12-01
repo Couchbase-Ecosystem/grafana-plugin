@@ -38,7 +38,7 @@ Add `datasources/couchbase.yaml` with your datasource configuration:
 apiVersion: 1
 datasources:
 - name: Couchbase
-  type: couchbase
+  type: couchbase-datasource
   access: proxy
   jsonData:
     host: <...>
