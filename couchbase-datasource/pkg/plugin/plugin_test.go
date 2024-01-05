@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/couchbaselabs/grafana-plugin/pkg/plugin"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
-	"github.com/grafana/grafana-starter-datasource-backend/pkg/plugin"
 )
 
 // This is where the tests for the datasource backend live.

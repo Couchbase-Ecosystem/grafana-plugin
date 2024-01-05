@@ -37,7 +37,7 @@ var (
 var channels = make(map[string]*QueryRequest)
 
 // NewCouchbaseDatasource creates a new datasource instance.
-func NewCouchbaseDatasource(instance backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewCouchbaseDatasource(_ context.Context, instance backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
   var settings map[string]string
   if e := json.Unmarshal(instance.JSONData, &settings); e != nil {
     return &backend.CheckHealthResult{
@@ -88,6 +88,7 @@ func (d *CouchbaseDatasource) QueryData(ctx context.Context, req *backend.QueryD
   defer func() {
     if err := recover(); err != nil {
       log.DefaultLogger.Error(fmt.Sprintf("Panic occured: %v", err))
+      log.DefaultLogger.Error(string(debug.Stack()))
       debug.PrintStack()
       panic(err)
     }
