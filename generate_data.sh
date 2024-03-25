@@ -25,13 +25,13 @@ EOR
   echo $row
   query="INSERT INTO ${target?} (KEY, VALUE) VALUES (UUID(), $row);"
   echo "QUERY: $query"
-  $cbq -e ${cluster?} -u ${user?} -p ${password?} --no-ssl-verify --script="$query"
+  docker exec couchbase $cbq -e ${cluster?} -u ${user?} -p ${password?} --no-ssl-verify --script="$query"
 }
 
 
 
 while(true); do
   insert_row
-  sleep ${interval-1}
+  sleep ${interval?-1}
 done
 
