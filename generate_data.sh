@@ -32,6 +32,6 @@ EOR
 
 while(true); do
   insert_row
-  sleep ${interval?-1}
+  sleep ${interval-1}
 done
 

@@ -49,7 +49,7 @@ export class ConfigEditor extends PureComponent<Props, State> {
     onOptionsChange({
       ...options,
       secureJsonData: {
-        password: false,
+        password: "",
       },
     });
   };

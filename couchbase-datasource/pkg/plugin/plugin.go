@@ -37,7 +37,7 @@ var (
 var channels = make(map[string]*QueryRequest)
 
 // NewCouchbaseDatasource creates a new datasource instance.
-func NewCouchbaseDatasource(instance backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewCouchbaseDatasource(context context.Context, instance backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	var settings map[string]string
 	if e := json.Unmarshal(instance.JSONData, &settings); e != nil {
 		log.DefaultLogger.Error("Failed to parse couchbase datasource settings: %w", e)
@@ -47,6 +47,7 @@ func NewCouchbaseDatasource(instance backend.DataSourceInstanceSettings) (instan
 		}, e
 	}
 	password := instance.DecryptedSecureJSONData["password"]
+	log.DefaultLogger.Info("Connecting to cluster: '%s'", settings["host"])
 	if cluster, err := gocb.Connect(
 		settings["host"],
 		gocb.ClusterOptions{
@@ -443,10 +444,11 @@ func createField(name string, values []interface{}) *data.Field {
 // The main use case for these health checks is the test button on the
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
-func (d *CouchbaseDatasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+func (d *CouchbaseDatasource) CheckHealth(context context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 	if pings, be := d.Cluster.Ping(&gocb.PingOptions{
 		ReportID:     "grafana-test",
 		ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeQuery},
+		Context:      context,
 	}); be != nil {
 		log.DefaultLogger.Error("Failed to ping the cluster", "error", be.Error())
 		return &backend.CheckHealthResult{
