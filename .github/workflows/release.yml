@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*.*.*" # Run workflow on version tags, e.g. v1.0.0.
+  workflow_dispatch:
 
 jobs:
   release:
@@ -45,15 +46,18 @@ jobs:
             ${{ runner.os }}-${{ matrix.node-version }}-nodemodules-
 
       - name: Install dependencies
+        working-directory: couchbase-datasource
         run: yarn install --frozen-lockfile;
         if: |
           steps.cache-yarn-cache.outputs.cache-hit != 'true' ||
           steps.cache-node-modules.outputs.cache-hit != 'true'
 
       - name: Build and test frontend
+        working-directory: couchbase-datasource
         run: yarn build
 
       - name: Check for backend
+        working-directory: couchbase-datasource
         id: check-for-backend
         run: |
           if [ -f "Magefile.go" ]
@@ -62,6 +66,7 @@ jobs:
           fi
 
       - name: Test backend
+        working-directory: couchbase-datasource
         if: steps.check-for-backend.outputs.has-backend == 'true'
         uses: magefile/mage-action@v1
         with:
@@ -69,6 +74,7 @@ jobs:
           args: coverage
 
       - name: Build backend
+        working-directory: couchbase-datasource
         if: steps.check-for-backend.outputs.has-backend == 'true'
         uses: magefile/mage-action@v1
         with:
@@ -77,11 +83,14 @@ jobs:
 
       - name: Sign plugin
         run: yarn sign
+        enabled: false
+        working-directory: couchbase-datasource
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }} # Requires a Grafana API key from Grafana.com.
 
       - name: Get plugin metadata
         id: metadata
+        working-directory: couchbase-datasource
         run: |
           sudo apt-get install jq
 
@@ -101,14 +110,17 @@ jobs:
 
       - name: Read changelog
         id: changelog
+        working-directory: couchbase-datasource
         run: |
           awk '/^## / {s++} s == 1 {print}' CHANGELOG.md > release_notes.md
           echo "::set-output name=path::release_notes.md"
 
       - name: Check package version
+        working-directory: couchbase-datasource
         run: if [ "v${{ steps.metadata.outputs.plugin-version }}" != "${{ steps.metadata.outputs.github-tag }}" ]; then printf "\033[0;31mPlugin version doesn't match tag name\033[0m\n"; exit 1; fi
 
       - name: Package plugin
+        working-directory: couchbase-datasource
         id: package-plugin
         run: |
           mv dist ${{ steps.metadata.outputs.plugin-id }}
@@ -117,6 +129,7 @@ jobs:
           echo "::set-output name=checksum::$(cat ./${{ steps.metadata.outputs.archive-checksum }} | cut -d' ' -f1)"
 
       - name: Lint plugin
+        working-directory: couchbase-datasource
         run: |
           git clone https://github.com/grafana/plugin-validator
           pushd ./plugin-validator/pkg/cmd/plugincheck
@@ -126,6 +139,7 @@ jobs:
 
       - name: Create release
         id: create_release
+        working-directory: couchbase-datasource
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -137,6 +151,7 @@ jobs:
 
       - name: Add plugin to release
         id: upload-plugin-asset
+        working-directory: couchbase-datasource
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -148,6 +163,7 @@ jobs:
 
       - name: Add checksum to release
         id: upload-checksum-asset
+        working-directory: couchbase-datasource
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -158,6 +174,7 @@ jobs:
           asset_content_type: text/plain
 
       - name: Publish to Grafana.com
+        enabled: false
         run: |
           echo A draft release has been created for your plugin. Please review and publish it. Then submit your plugin to grafana.com/plugins by opening a PR to https://github.com/grafana/grafana-plugin-repository with the following entry:
           echo
