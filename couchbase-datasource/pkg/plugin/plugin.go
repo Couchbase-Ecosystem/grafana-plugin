@@ -190,6 +190,11 @@ func (d *CouchbaseDatasource) query(channel *string, query_data *QueryRequest) b
 		}
 	}
 
+	if timeField == nil {
+		response.Error = errors.New("Failed to detect time field. Pleae use time_range(fieldName) or str_time_range(fieldName) functions in WHERE clause of your query.")
+		return response
+	}
+
 	log.DefaultLogger.Info("Unmarshalled json", "query_string", query_string)
 
 	log.DefaultLogger.Info("Querying couchbase", "query_string", query_string)
@@ -218,6 +223,10 @@ func (d *CouchbaseDatasource) query(channel *string, query_data *QueryRequest) b
 		var vals [][]interface{}
 		for res.Next() {
 			res.Row(&row)
+			if row["data"] == nil {
+				continue
+			}
+
 			d := row["data"].(map[string]interface{})
 
 			if len(keys) == 0 {
