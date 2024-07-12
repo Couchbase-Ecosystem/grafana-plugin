@@ -17,7 +17,8 @@ Please consult with the `./run.sh` script that is used to launch Grafana with th
 * Add a new datasource in configuration and configure it with your cluster information.
 
 ## Usage
-The datasource plugin provides two functions for time range filtering:
+The datasource supports only `SELECT` statements.
+The datasource plugin provides two functions that *must* be included in every query for time range filtering:
 - `str_time_range(<fieldname>)` for filtering on RFC3339 dates
 - `time_range(<fieldname>)` for filtering on millisecond timestamps
 
