@@ -18,7 +18,7 @@ Please consult with the `./run.sh` script that is used to launch Grafana with th
 
 ## Usage
 The datasource supports only `SELECT` statements.
-The datasource plugin provides two functions that *must* be included in every query for time range filtering:
+The datasource plugin provides two additional sql++ `WHERE` clause functions one and only one of which *must* be included in every query for time range filtering:
 - `str_time_range(<fieldname>)` for filtering on RFC3339 dates
 - `time_range(<fieldname>)` for filtering on millisecond timestamps
 
