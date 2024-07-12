@@ -5,7 +5,7 @@
 This is a simple community-supported Grafana datasource plugin that allows querying time series and log data from Couchbase Clusters, inclding Capella clusters.
 
 ## Installation from sources
-Please consult with the `./run.sh` script that is used to launch Grafana with the plugin in a Docker container for the latest instructions on building the plugin.
+This plugin uses ["Standard Grafana DataSource Backend Plugin build process"](https://grafana.com/developers/plugin-tools/tutorials/build-a-data-source-backend-plugin). Also, the `./run.sh` script in this repository is used to launch Grafana with the plugin in a Docker container and usually contains the latest build process commands.
 
 * Clone this repository 
 * In `couchbase-datasource` directory, run `yarn install && yarn build && mage -v`
