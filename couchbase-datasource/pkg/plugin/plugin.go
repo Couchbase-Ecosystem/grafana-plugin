@@ -185,8 +185,8 @@ func (d *CouchbaseDatasource) query(channel *string, query_data *QueryRequest) b
 				return response
 			}
 			timeField = &match[timeRg.SubexpIndex("field")]
-			query_string = timeRg.ReplaceAllString(query_string, fmt.Sprintf("$1 > STR_TO_MILLIS('%s') AND $1 <= STR_TO_MILLIS('%s')", tr.From.Format(time.RFC3339), tr.To.Format(time.RFC3339)))
-			query_string = "SELECT * FROM (" + query_string + ") AS data ORDER by data." + *timeField + " ASC"
+			query_string = timeRg.ReplaceAllString(query_string, fmt.Sprintf("TO_NUMBER($1) > STR_TO_MILLIS('%s') AND TO_NUMBER($1) <= STR_TO_MILLIS('%s')", tr.From.Format(time.RFC3339), tr.To.Format(time.RFC3339)))
+			query_string = "SELECT * FROM (" + query_string + ") AS data ORDER by TO_NUMBER(data." + *timeField + ") ASC"
 		}
 	}
 
