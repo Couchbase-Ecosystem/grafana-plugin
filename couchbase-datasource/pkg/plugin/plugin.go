@@ -191,7 +191,7 @@ func (d *CouchbaseDatasource) query(channel *string, query_data *QueryRequest) b
 	}
 
 	if timeField == nil {
-		response.Error = errors.New("Failed to detect time field. Pleae use time_range(fieldName) or str_time_range(fieldName) functions in WHERE clause of your query.")
+		response.Error = errors.New("Failed to detect time field. Please use time_range(fieldName) or str_time_range(fieldName) functions in WHERE clause of your query.")
 		return response
 	}
 
