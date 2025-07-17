@@ -26,12 +26,13 @@ This plugin uses [Standard Grafana DataSource Backend Plugin build process](http
 Grafana couchbase datasources can be used both in dashboards and Explore sections to perform time-series data and aggregation queries against a Couchbase clusters. 
 
 The plugin provides two additional sql++ `WHERE` clause functions that inject into all submitted queries time range filtering clauses according to a selected in Grafana UI report time range:
-- `str_time_range(<fieldname>)` for filtering on RFC3339 dates
-- `time_range(<fieldname>)` for filtering on millisecond timestamps
+- `str_time_range(<time_string_field>)` for filtering on RFC3339 dates
+- `time_range(<timestamp_field>)` for filtering on millisecond timestamps
 
 Both functions take the name of the field to be used for filtering. 
 [One and only one of these functions *must* be included in every query submitted through the plugin.](https://github.com/Couchbase-Ecosystem/grafana-plugin/issues/6)
 These are pseudo-functions, references to them are replaced with a set of WHERE filters on provided field by the plugin before the query is sent to the cluster.
+* Note: all queries MUST add the field used for time range filtering into their `SELECT` field list.
 
 ### Example Queries:
 * This Grafana query: 
