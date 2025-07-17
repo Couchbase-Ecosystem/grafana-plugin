@@ -20,23 +20,46 @@ This plugin uses [Standard Grafana DataSource Backend Plugin build process](http
 * Add a new datasource in configuration and configure it with your cluster information.
 
 ## Usage
-The datasource supports only `SELECT` statements.
-The datasource plugin provides two additional sql++ `WHERE` clause functions that inject into all submitted queries time range filtering clauses according to 
-selected in Grafana UI report time range:
+* Note: all datasource queries made from Grafana MUST include one and only one `*_time_range` function that will be replaced by the datasource plugin with a proper SQL++ time limit clause.
+* Note: Only `SELECT` statements are supported.
+
+Grafana couchbase datasources can be used both in dashboards and Explore sections to perform time-series data and aggregation queries against a Couchbase clusters. 
+
+The plugin provides two additional sql++ `WHERE` clause functions that inject into all submitted queries time range filtering clauses according to a selected in Grafana UI report time range:
 - `str_time_range(<fieldname>)` for filtering on RFC3339 dates
 - `time_range(<fieldname>)` for filtering on millisecond timestamps
 
 Both functions take the name of the field to be used for filtering. 
-One and only one of these functions *must* be included in every query submitted through the plugin:
-Examples:
+[One and only one of these functions *must* be included in every query submitted through the plugin.](https://github.com/Couchbase-Ecosystem/grafana-plugin/issues/6)
+These are pseudo-functions, references to them are replaced with a set of WHERE filters on provided field by the plugin before the query is sent to the cluster.
 
-```sql
-select count, time_string from test where str_time_range(time_string)
-select count, timestamp from test where time_range(timestamp)
-```
-
-These are pseudo-functions, references to them are replaced with a set of `WHERE` filters on provided field by the plugin before the query is sent to the cluster.
-
+### Example Queries:
+* This Grafana query: 
+    ```sql
+    select event_count, time_string_field from test where str_time_range(time_string_field)
+    ```
+    Will be transformed into the following SQL++ query, in which `<DT_MIN>` and `<DT_MAX>` represent date and time range selected in the Grafana UI:
+    ```sql
+    SELECT * FROM (
+        select event_count, time_string_field from test where
+            STR_TO_MILLIS(time_string_field) > STR_TO_MILLIS('<DT_MIN>')
+            AND STR_TO_MILLIS(time_string_field) <= STR_TO_MILLIS('<DT_MAX>')
+        ) as data ORDER BY STR_TO_MILLIS(data.time_string_field) ASC
+    ```
+* This Grafana query: 
+    ```sql
+    select event_count, timestamp_field from test where time_range(timestamp_field)
+    ```
+    Will be transformed into the following SQL++ query:
+    ```sql
+    SELECT * FROM (
+        select event_count, timestamp_field from test where
+            TO_NUMBER(timestamp_field) > STR_TO_MILLIS('<DT_MIN>')
+            AND TO_NUMBER(timestamp_field) <= STR_TO_MILLIS('<DT_MAX>')
+        ) as data ORDER BY TO_NUMBER(data.timestamp_field) ASC
+    ```
+  
+  
 
 ## Development instructions 
 Add `datasources/couchbase.yaml` with your datasource configuration:
