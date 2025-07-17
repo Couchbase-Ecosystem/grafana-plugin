@@ -45,7 +45,7 @@ These are pseudo-functions, references to them are replaced with a set of WHERE 
         select event_count, time_string_field from test where
             STR_TO_MILLIS(time_string_field) > STR_TO_MILLIS('<DT_MIN>')
             AND STR_TO_MILLIS(time_string_field) <= STR_TO_MILLIS('<DT_MAX>')
-        ) as data ORDER BY STR_TO_MILLIS(data.time_string_field) ASC
+    ) as data ORDER BY STR_TO_MILLIS(data.time_string_field) ASC
     ```
 * This Grafana query: 
     ```sql
@@ -57,7 +57,7 @@ These are pseudo-functions, references to them are replaced with a set of WHERE 
         select event_count, timestamp_field from test where
             TO_NUMBER(timestamp_field) > STR_TO_MILLIS('<DT_MIN>')
             AND TO_NUMBER(timestamp_field) <= STR_TO_MILLIS('<DT_MAX>')
-        ) as data ORDER BY TO_NUMBER(data.timestamp_field) ASC
+    ) as data ORDER BY TO_NUMBER(data.timestamp_field) ASC
     ```
   
   
