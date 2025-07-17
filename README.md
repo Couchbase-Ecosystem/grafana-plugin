@@ -4,6 +4,9 @@
 
 This is a simple community-supported Grafana datasource plugin that allows querying time series and log data from Couchbase Clusters, inclding Capella clusters.
 
+## Installation from the pre-built zip archive
+We provide pre-build zip archives with plugin releases by running CI on main branch of this repository. The latest release can be downloaded from the "[Releases](https://github.com/Couchbase-Ecosystem/grafana-plugin/releases)" section. Please refer to [Grafana Documentation](https://grafana.com/docs/grafana/latest/administration/plugin-management/#install-a-plugin-from-a-zip-file) for instructions on installing Grafana plugins from zip files.
+
 ## Installation from sources
 This plugin uses [Standard Grafana DataSource Backend Plugin build process](https://grafana.com/developers/plugin-tools/tutorials/build-a-data-source-backend-plugin). Also, the `./run.sh` script in this repository is used to launch Grafana with the plugin in a Docker container and usually contains the latest build process commands.
 
