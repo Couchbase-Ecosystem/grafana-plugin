@@ -444,6 +444,16 @@ func createField(name string, values []interface{}) *data.Field {
 			r[i] = v.(*time.Time)
 		}
 		return data.NewField(name, nil, r)
+	case []interface{}:
+		raw := make([]json.RawMessage, len(values))
+		for i, item := range values {
+			b, err := json.Marshal(item)
+			if err != nil {
+				panic(fmt.Errorf("failed to marshal providers: %w", err))
+			}
+			raw[i] = b
+		}
+		return data.NewField(name, nil, raw)
 	default:
 		panic(fmt.Errorf("unsupported type %T", v))
 	}
