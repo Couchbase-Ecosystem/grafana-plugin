@@ -7,11 +7,11 @@ This is a simple community-supported Grafana datasource plugin that allows query
 ## Installation using Grafana cli
 Run the following command to list available plugin versions using Grafana cli tool:
 ```shell
-grafana cli --repo https://couchbase-ecosystem.github.io/grafana-plugin/plugins/ plugins list-versions couchbase-datasource
+grafana cli --repo https://gfp.prod.cbdevx.com/plugins/ plugins list-versions couchbase-datasource
 ```
 Replace <VERSION> with latest plugin version from the output of the previous command and run the following command to install the plugin:
 ```shell
-grafana cli --repo https://couchbase-ecosystem.github.io/grafana-plugin/plugins/ plugins install couchbase-datasource <VERSION>
+grafana cli --repo https://gfp.prod.cbdevx.com/plugins/ plugins install couchbase-datasource <VERSION>
 ```
 
 ## Installation from the pre-built zip archive
