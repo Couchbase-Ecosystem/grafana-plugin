@@ -1,6 +1,6 @@
 {
   "name": "couchbase-couchbase",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Couchbase database connector",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
