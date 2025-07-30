@@ -23,10 +23,10 @@ popd
 
 zip couchbase-datasource.zip "$tmp/couchbase-datasource" -r
 
-mkdir -p plugins/couchbase-datasource/versions/${CBVER}
 
-if  [ ! -f plugins/couchbase-datasource/versions/${CBVER}/couchbase-datasource.zip ]; then
-  cp couchbase-datasource.zip plugins/couchbase-datasource/versions/${CBVER}
+if  [ ! -f plugins/couchbase-datasource/versions/${CBVER}/download ]; then
+  mkdir -p plugins/couchbase-datasource/versions/${CBVER}
+  cp couchbase-datasource.zip plugins/couchbase-datasource/versions/download
 
   cat plugins/repo/index.html | jq ".plugins[0].versions+=[{\"version\":\"${CBVER}\"}]" > "$tmp/cb-repo-index.json"
   mv "$tmp/cb-repo-index.json" plugins/repo/index.html
