@@ -28,3 +28,4 @@ cp couchbase-datasource.zip plugins/couchbase-datasource/versions/${CBVER}
 
 cat plugins/repo/couchbase-datasource/index.html | jq ".versions+=[{\"arch\":{\"any\":{}},\"version\":\"${CBVER}\"}]" > "$tmp/cbds-versions.json"
 mv "$tmp/cbds-versions.json" plugins/repo/couchbase-datasource/index.html
+git add plugins
