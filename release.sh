@@ -21,7 +21,9 @@ if  [ ! -f plugins/couchbase-datasource/versions/${CBVER}/download ]; then
   mage -v
 
 
-  rm ../couchbase-datasource.zip
+  if [ -f ../couchbase-datasource.zip ]; then
+    rm ../couchbase-datasource.zip
+  fi
   zip ../couchbase-datasource.zip dist -r
   popd
   MD5=$(md5 -q couchbase-datasource.zip)
@@ -38,8 +40,7 @@ if  [ ! -f plugins/couchbase-datasource/versions/${CBVER}/download ]; then
   cat plugins/couchbase-datasource/versions/index.html | jq ".items+=[{\"packages\": {\"any\": {\"downloadUrl\": \"https://github.com/couchbase-ecosystem/grafana-plugin/raw/refs/heads/main/plugins/couchbase-datasource/versions/${CBVER}/download\", \"md5\": \"${MD5}\"}},\"version\": \"${CBVER}\"}]" > $tmp/versions.json
   mv $tmp/versions.json plugins/couchbase-datasource/versions/index.html
 
-  git add plugins
+  rm -Rf $tmp
+  rm couchbase-datasource.zip
 fi
 
-rm -Rf $tmp
-rm couchbase-datasource.zip
