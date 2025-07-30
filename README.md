@@ -14,7 +14,7 @@ Replace <VERSION> with latest plugin version from the output of the previous com
 grafana cli --repo https://gfp.prod.cbdevx.com/plugins/ plugins install couchbase-datasource <VERSION>
 ```
 
-## Installation from the pre-built zip archive
+## Installation from the pre-built zip archive (Deprecated, please use other methods)
 We provide pre-build zip archives with plugin releases by running CI on version tags in this repository. The latest release can be downloaded from the "[Releases](https://github.com/Couchbase-Ecosystem/grafana-plugin/releases)" section. Please refer to [Grafana Documentation](https://grafana.com/docs/grafana/latest/administration/plugin-management/#install-a-plugin-from-a-zip-file) for instructions on installing Grafana plugins from zip files.
 
 ## Installation from sources
