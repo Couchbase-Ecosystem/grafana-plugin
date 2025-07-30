@@ -18,21 +18,27 @@ pushd couchbase-datasource
 yarn build
 mage -v
 
-cp -r dist "$tmp/couchbase-datasource/"
-popd
 
-zip couchbase-datasource.zip "$tmp/couchbase-datasource" -r
+rm ../couchbase-datasource.zip
+zip ../../couchbase-datasource.zip dist -r
+popd
+MD5=$(md5 -q couchbase-datasource.zip)
 
 
 if  [ ! -f plugins/couchbase-datasource/versions/${CBVER}/download ]; then
   mkdir -p plugins/couchbase-datasource/versions/${CBVER}
   cp couchbase-datasource.zip plugins/couchbase-datasource/versions/${CBVER}/download
 
-  cat plugins/repo/index.html | jq ".plugins[0].versions+=[{\"version\":\"${CBVER}\"}]" > "$tmp/cb-repo-index.json"
+  cat plugins/repo/index.html | jq ".plugins[0].versions+=[{\"version\":\"${CBVER}\",\"download\":{\"any\": {\"url\": \"https://github.com/Couchbase-Ecosystem/grafana-plugin/raw/refs/heads/main/plugins/couchbase-datasource/versions/${CBVER}/download\", \"md5\":\"${MD5}\"}}}]" > "$tmp/cb-repo-index.json"
   mv "$tmp/cb-repo-index.json" plugins/repo/index.html
 
-  cat plugins/repo/couchbase-datasource/index.html | jq ".versions+=[{\"arch\":{\"any\":{}},\"version\":\"${CBVER}\"}]" > "$tmp/cbds-versions.json"
-  mv "$tmp/cbds-versions.json" plugins/repo/couchbase-datasource/index.html
+#  cat plugins/repo/couchbase-datasource/index.html | jq ".versions+=[{\"arch\":{\"any\":{}},\"version\":\"${CBVER}\"}]" > "$tmp/cbds-versions.json"
+#  mv "$tmp/cbds-versions.json" plugins/repo/couchbase-datasource/index.html
+#
+  cat plugins/couchbase-datasource/versions/index.html | jq ".items+=[{\"packages\": {\"any\": {\"downloadUrl\": \"https://github.com/couchbase-ecosystem/grafana-plugin/raw/refs/heads/main/plugins/couchbase-datasource/versions/${CBVER}/download\", \"md5\": \"${MD5}\"}},\"version\": \"${CBVER}\"}]" > $tmp/versions.json
+  mv $tmp/versions.json plugins/couchbase-datasource/versions/index.html
 
   git add plugins
 fi
+
+rm -Rf $tmp
