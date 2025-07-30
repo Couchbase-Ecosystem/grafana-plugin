@@ -38,7 +38,6 @@ if  [ ! -f plugins/couchbase-datasource/versions/${CBVER}/download ]; then
   cat plugins/couchbase-datasource/versions/index.html | jq ".items+=[{\"packages\": {\"any\": {\"downloadUrl\": \"https://github.com/couchbase-ecosystem/grafana-plugin/raw/refs/heads/main/plugins/couchbase-datasource/versions/${CBVER}/download\", \"md5\": \"${MD5}\"}},\"version\": \"${CBVER}\"}]" > $tmp/versions.json
   mv $tmp/versions.json plugins/couchbase-datasource/versions/index.html
 
-  git add plugins
 fi
 
 rm -Rf $tmp
