@@ -113,6 +113,7 @@ func (d *CouchbaseDatasource) QueryData(ctx context.Context, req *backend.QueryD
 			response.Responses[q.RefID] = d.query(nil, &query)
 		} else {
 			log.DefaultLogger.Warn("Empty query with id '%s'", q.RefID)
+			response.Responses[q.RefID] = backend.DataResponse{}
 		}
 	}
 
@@ -133,6 +134,9 @@ type cbResult interface {
 
 func parseQuery(raw []byte) QueryRequest {
 	var query_data QueryRequest
+	if len(raw) == 0 {
+		return query_data
+	}
 	if err := json.Unmarshal(raw, &query_data); err != nil {
 		log.DefaultLogger.Error("Failed to unmarshal request json", string(raw), "error", err)
 		panic(err)

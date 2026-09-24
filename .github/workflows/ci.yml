@@ -2,27 +2,36 @@ name: CI
 
 on:
   workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+defaults:
+  run:
+    working-directory: couchbase-datasource
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js environment
-        uses: actions/setup-node@v2.1.2
+        uses: actions/setup-node@v4
         with:
-          node-version: "14.x"
+          node-version: "20.x"
 
       - name: Get yarn cache directory path
         id: yarn-cache-dir-path
-        run: echo "::set-output name=dir::$(yarn cache dir)"
+        run: echo "dir=$(yarn cache dir)" >> "$GITHUB_OUTPUT"
 
       - name: Cache yarn cache
         uses: actions/cache@v4
         id: cache-yarn-cache
         with:
           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('couchbase-datasource/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-yarn-
 
@@ -30,15 +39,21 @@ jobs:
         id: cache-node-modules
         uses: actions/cache@v4
         with:
-          path: node_modules
-          key: ${{ runner.os }}-${{ matrix.node-version }}-nodemodules-${{ hashFiles('**/yarn.lock') }}
+          path: couchbase-datasource/node_modules
+          key: ${{ runner.os }}-nodemodules-${{ hashFiles('couchbase-datasource/yarn.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.node-version }}-nodemodules-
+            ${{ runner.os }}-nodemodules-
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build and test frontend
+      - name: Typecheck frontend
+        run: yarn typecheck
+
+      - name: Test frontend
+        run: yarn test:ci
+
+      - name: Build frontend
         run: yarn build
 
       - name: Check for backend
@@ -46,25 +61,27 @@ jobs:
         run: |
           if [ -f "Magefile.go" ]
           then
-            echo "::set-output name=has-backend::true"
+            echo "has-backend=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Setup Go environment
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
-          go-version: "1.16"
+          go-version-file: couchbase-datasource/go.mod
 
       - name: Test backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: magefile/mage-action@v1
+        uses: magefile/mage-action@v3
         with:
           version: latest
           args: coverage
+          workdir: couchbase-datasource
 
       - name: Build backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: magefile/mage-action@v1
+        uses: magefile/mage-action@v3
         with:
           version: latest
           args: buildAll
+          workdir: couchbase-datasource
