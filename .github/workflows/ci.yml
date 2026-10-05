@@ -15,19 +15,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js environment
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "20.x"
+          node-version: "22.x"
 
       - name: Get yarn cache directory path
         id: yarn-cache-dir-path
         run: echo "dir=$(yarn cache dir)" >> "$GITHUB_OUTPUT"
 
       - name: Cache yarn cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: cache-yarn-cache
         with:
           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
@@ -37,7 +37,7 @@ jobs:
 
       - name: Cache node_modules
         id: cache-node-modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: couchbase-datasource/node_modules
           key: ${{ runner.os }}-nodemodules-${{ hashFiles('couchbase-datasource/yarn.lock') }}
@@ -66,13 +66,13 @@ jobs:
 
       - name: Setup Go environment
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: couchbase-datasource/go.mod
 
       - name: Test backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: magefile/mage-action@v3
+        uses: magefile/mage-action@v4
         with:
           version: latest
           args: coverage
@@ -80,7 +80,7 @@ jobs:
 
       - name: Build backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: magefile/mage-action@v3
+        uses: magefile/mage-action@v4
         with:
           version: latest
           args: buildAll
