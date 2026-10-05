@@ -2,6 +2,8 @@ module github.com/couchbaselabs/grafana-plugin
 
 go 1.26.5
 
+toolchain go1.26.8
+
 require (
 	github.com/couchbase/gocb/v2 v2.12.5
 	github.com/grafana/grafana-plugin-sdk-go v0.296.5
