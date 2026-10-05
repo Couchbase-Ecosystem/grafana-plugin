@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -244,8 +245,24 @@ func (d *CouchbaseDatasource) query(channel *string, query_data *QueryRequest) b
 				val := d[key]
 				vals[i] = append(vals[i], val)
 				if key == *timeField {
-					if to, e := time.Parse(time.RFC3339, val.(string)); e == nil {
-						query_data.Range.To = to
+					// if to, e := time.Parse(time.RFC3339, val.(string)); e == nil {
+					// 	query_data.Range.To = to
+					// }
+					// added support for epoch millis time field to handle multiple time field formats
+					// as raised in the issue here https://github.com/Couchbase-Ecosystem/grafana-plugin/issues/15
+					switch t := val.(type) {
+					case string:
+						if to, err := time.Parse(time.RFC3339, t); err == nil {
+							query_data.Range.To = to
+						} else if ms, err := strconv.ParseInt(t, 10, 64); err == nil {
+							query_data.Range.To = time.UnixMilli(ms)
+						}
+					case float64:
+						query_data.Range.To = time.UnixMilli(int64(t))
+					case int64:
+						query_data.Range.To = time.UnixMilli(t)
+					case time.Time:
+						query_data.Range.To = t
 					}
 				}
 			}
@@ -271,11 +288,33 @@ func normalizeFieldData(name string, values []interface{}) (string, []interface{
 	result := make([]interface{}, len(values))
 	if strings.EqualFold(name, "time") {
 		for i, v := range values {
-			if time, err := time.Parse(time.RFC3339, v.(string)); err == nil {
-				result[i] = time
-			} else {
-				panic(err)
-			}
+			// if time, err := time.Parse(time.RFC3339, v.(string)); err == nil {
+			// 	result[i] = time
+			// } else {
+			// 	panic(err)
+			// }
+			// added support for epoch millis time field to handle multiple time field formats
+			// as raised in the issue here https://github.com/Couchbase-Ecosystem/grafana-plugin/issues/15
+			switch t := v.(type) {
+            case time.Time:
+                result[i] = t
+            case float64:
+                // Assume milliseconds since epoch
+                result[i] = time.UnixMilli(int64(t))
+            case int64:
+                result[i] = time.UnixMilli(t)
+            case string:
+                // Try to parse as int64 milliseconds
+                if ms, err := strconv.ParseInt(t, 10, 64); err == nil {
+                    result[i] = time.UnixMilli(ms)
+                } else if parsed, err := time.Parse(time.RFC3339, t); err == nil {
+                    result[i] = parsed
+                } else {
+                    panic(err)
+                }
+            default:
+                panic("unsupported time field type")
+            }
 		}
 		return "Time", result
 	}
