@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -244,17 +245,33 @@ func (d *CouchbaseDatasource) query(channel *string, query_data *QueryRequest) b
 				val := d[key]
 				vals[i] = append(vals[i], val)
 				if key == *timeField {
-					if to, e := time.Parse(time.RFC3339, val.(string)); e == nil {
-						query_data.Range.To = to
+					if val != nil {
+						if ts, ok := val.(string); ok {
+							if to, e := time.Parse(time.RFC3339, ts); e == nil {
+								query_data.Range.To = to
+							}
+						}
 					}
 				}
 			}
 
 		}
 
-		frame.Fields = make(data.Fields, len(keys))
+		// Drop any fields with zero values to avoid mismatched frame lengths
+		cleanedKeys := make([]string, 0, len(keys))
+		cleanedVals := make([][]interface{}, 0, len(vals))
 		for i, key := range keys {
-			frame.Fields[i] = createField(key, vals[i])
+			if len(vals[i]) > 0 {
+				cleanedKeys = append(cleanedKeys, key)
+				cleanedVals = append(cleanedVals, vals[i])
+			} else {
+				log.DefaultLogger.Warn("Dropping empty field", "field", key)
+			}
+		}
+
+		frame.Fields = make(data.Fields, len(cleanedKeys))
+		for i, key := range cleanedKeys {
+			frame.Fields[i] = createField(key, cleanedVals[i])
 		}
 
 		if channel != nil {
@@ -268,27 +285,51 @@ func (d *CouchbaseDatasource) query(channel *string, query_data *QueryRequest) b
 }
 
 func normalizeFieldData(name string, values []interface{}) (string, []interface{}) {
-	result := make([]interface{}, len(values))
-	if strings.EqualFold(name, "time") {
-		for i, v := range values {
-			if time, err := time.Parse(time.RFC3339, v.(string)); err == nil {
-				result[i] = time
+	result := make([]interface{}, 0, len(values))
+	isTime := strings.EqualFold(name, "time")
+	for _, v := range values {
+		if isTime {
+			if v == nil {
+				result = append(result, nil)
+			} else if timeStr, ok := v.(string); ok {
+				if timeVal, err := time.Parse(time.RFC3339, timeStr); err == nil {
+					result = append(result, timeVal)
+				} else {
+					// attempt epoch millis from string
+					if ms, err2 := strconv.ParseInt(timeStr, 10, 64); err2 == nil {
+						result = append(result, time.UnixMilli(ms))
+					} else {
+						// preserve original value if parsing fails
+						result = append(result, v)
+					}
+				}
+			} else if f64, ok := v.(float64); ok {
+				// epoch millis as float64
+				result = append(result, time.UnixMilli(int64(f64)))
+			} else if i64, ok := v.(int64); ok {
+				// epoch millis as int64
+				result = append(result, time.UnixMilli(i64))
 			} else {
-				panic(err)
+				// If not a string and not nil, try to preserve it
+				result = append(result, v)
 			}
+		} else {
+			result = append(result, v)
 		}
+	}
+	if isTime {
 		return "Time", result
 	}
-	return name, values
+	return name, result
 }
 
 func createField(name string, values []interface{}) *data.Field {
+	name, values = normalizeFieldData(name, values)
+
 	vlen := len(values)
 	if vlen == 0 {
 		return data.NewField(name, nil, []bool{})
 	}
-
-	name, values = normalizeFieldData(name, values)
 
 	log.DefaultLogger.Debug(fmt.Sprintf("field %s: %d values", name, vlen))
 	switch v := values[0].(type) {
@@ -413,9 +454,34 @@ func createField(name string, values []interface{}) *data.Field {
 		}
 		return data.NewField(name, nil, r)
 	case string:
+		// If any value is nil or non-string, fall back to []*string to preserve nulls
+		needsPtr := false
+		for _, vv := range values {
+			if vv == nil {
+				needsPtr = true
+				break
+			}
+			if _, ok := vv.(string); !ok {
+				needsPtr = true
+				break
+			}
+		}
+		if needsPtr {
+			r := make([]*string, vlen)
+			for i, vv := range values {
+				if vv == nil {
+					r[i] = nil
+				} else {
+					s := vv.(string)
+					sCopy := s
+					r[i] = &sCopy
+				}
+			}
+			return data.NewField(name, nil, r)
+		}
 		r := make([]string, vlen)
-		for i, v := range values {
-			r[i] = v.(string)
+		for i, vv := range values {
+			r[i] = vv.(string)
 		}
 		return data.NewField(name, nil, r)
 	case *string:
