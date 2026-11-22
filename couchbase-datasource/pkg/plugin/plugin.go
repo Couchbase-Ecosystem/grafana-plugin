@@ -155,49 +155,62 @@ func parseJson(raw []byte) map[string]interface{} {
 	}
 }
 
+var (
+	strTimeRangeMacro = regexp.MustCompile(`(?i)str_time_range\s*\((?P<field>[^\)]+)\)`)
+	timeRangeMacro    = regexp.MustCompile(`(?i)time_range\s*\((?P<field>[^\)]+)\)`)
+)
+
+// expandTimeMacros rewrites the plugin's query macros into SQL++ for the
+// dashboard time range tr. It returns the rewritten query and the name of the
+// time field the macro referenced.
+//
+//   - str_time_range(field) filters on an RFC3339 string field.
+//   - time_range(field) filters on a numeric epoch-millis field.
+//
+// The original query is wrapped in a subquery aliased as `data` and ordered by
+// the time field, which is what the row-to-frame code relies on. Exactly one
+// macro call per query is supported.
+func expandTimeMacros(query string, tr backend.TimeRange) (string, string, error) {
+	from, to := tr.From.Format(time.RFC3339), tr.To.Format(time.RFC3339)
+	var timeField *string
+
+	for _, match := range strTimeRangeMacro.FindAllStringSubmatch(query, -1) {
+		if timeField != nil {
+			return "", "", errors.New("Only one call to STR_TIME_RANGE per query is supported")
+		}
+		timeField = &match[strTimeRangeMacro.SubexpIndex("field")]
+		query = strTimeRangeMacro.ReplaceAllString(query, fmt.Sprintf("STR_TO_MILLIS($1) > STR_TO_MILLIS('%s') AND STR_TO_MILLIS($1) <= STR_TO_MILLIS('%s')", from, to))
+		query = "SELECT * FROM (" + query + ") AS data ORDER by str_to_millis(data." + *timeField + ") ASC"
+	}
+
+	for _, match := range timeRangeMacro.FindAllStringSubmatch(query, -1) {
+		if timeField != nil {
+			return "", "", errors.New("Only one call to TIME_RANGE per query is supported")
+		}
+		timeField = &match[timeRangeMacro.SubexpIndex("field")]
+		query = timeRangeMacro.ReplaceAllString(query, fmt.Sprintf("TO_NUMBER($1) > STR_TO_MILLIS('%s') AND TO_NUMBER($1) <= STR_TO_MILLIS('%s')", from, to))
+		query = "SELECT * FROM (" + query + ") AS data ORDER by TO_NUMBER(data." + *timeField + ") ASC"
+	}
+
+	if timeField == nil {
+		return "", "", errors.New("Failed to detect time field. Please use time_range(fieldName) or str_time_range(fieldName) functions in WHERE clause of your query.")
+	}
+	return query, *timeField, nil
+}
+
 func (d *CouchbaseDatasource) query(channel *string, query_data *QueryRequest) backend.DataResponse {
 
 	response := backend.DataResponse{
 		Frames: make(data.Frames, 0),
 	}
 
-	query_string := query_data.Query
-	tr := query_data.Range
-	var timeField *string
-
 	log.DefaultLogger.Info("Transforming query")
-	if strTimeRg, e := regexp.Compile("(?i)str_time_range\\s*\\((?P<field>[^\\)]+)\\)"); e != nil {
-		panic(e)
-	} else {
-		for _, match := range strTimeRg.FindAllStringSubmatch(query_string, -1) {
-			if timeField != nil {
-				response.Error = errors.New("Only one call to STR_TIME_RANGE per query is supported")
-				return response
-			}
-			timeField = &match[strTimeRg.SubexpIndex("field")]
-			query_string = strTimeRg.ReplaceAllString(query_string, fmt.Sprintf("STR_TO_MILLIS($1) > STR_TO_MILLIS('%s') AND STR_TO_MILLIS($1) <= STR_TO_MILLIS('%s')", tr.From.Format(time.RFC3339), tr.To.Format(time.RFC3339)))
-			query_string = "SELECT * FROM (" + query_string + ") AS data ORDER by str_to_millis(data." + *timeField + ") ASC"
-		}
-	}
-
-	if timeRg, e := regexp.Compile("(?i)time_range\\s*\\((?P<field>[^\\)]+)\\)"); e != nil {
-		panic(e)
-	} else {
-		for _, match := range timeRg.FindAllStringSubmatch(query_string, -1) {
-			if timeField != nil {
-				response.Error = errors.New("Only one call to TIME_RANGE per query is supported")
-				return response
-			}
-			timeField = &match[timeRg.SubexpIndex("field")]
-			query_string = timeRg.ReplaceAllString(query_string, fmt.Sprintf("TO_NUMBER($1) > STR_TO_MILLIS('%s') AND TO_NUMBER($1) <= STR_TO_MILLIS('%s')", tr.From.Format(time.RFC3339), tr.To.Format(time.RFC3339)))
-			query_string = "SELECT * FROM (" + query_string + ") AS data ORDER by TO_NUMBER(data." + *timeField + ") ASC"
-		}
-	}
-
-	if timeField == nil {
-		response.Error = errors.New("Failed to detect time field. Please use time_range(fieldName) or str_time_range(fieldName) functions in WHERE clause of your query.")
+	query_string, timeFieldName, err := expandTimeMacros(query_data.Query, query_data.Range)
+	if err != nil {
+		response.Error = err
 		return response
 	}
+	timeField := &timeFieldName
 
 	log.DefaultLogger.Info("Unmarshalled json", "query_string", query_string)
 
